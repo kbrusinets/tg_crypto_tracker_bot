@@ -1,0 +1,38 @@
+version: '3'
+
+services:
+  bot:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: bot
+    command: >
+      sh -c "until pg_isready -h $DB_HOST; do echo 'Database not accepting connections. Waiting 5 sec.'; sleep 5; done && 
+             python -u main.py"
+    ports:
+      - 8000:8000
+    environment:
+      - TG_NOTIFICATION_BOT_DB_USER=${DB_USER}
+      - TG_NOTIFICATION_BOT_DB_PASS=${DB_PASS}
+      - TG_NOTIFICATION_BOT_DB_HOST=${DB_HOST}
+      - TG_NOTIFICATION_BOT_DB_NAME=${DB_NAME}
+      - TG_NOTIFICATION_BOT_DB_SCHEMA=${SCHEMA_NAME}
+      - TG_NOTIFICATION_BOT_TG_TOKEN=${TG_TOKEN}
+    depends_on:
+      - postgres
+  postgres:
+    container_name: postgres
+    restart: unless-stopped
+    image: postgres:13.1-alpine
+    volumes:
+    - postgres:/data/postgres
+    ports:
+    - 5432:5432
+    environment:
+    - POSTGRES_USER=${DB_USER}
+    - POSTGRES_PASSWORD=${DB_PASS}
+    - POSTGRES_DB=${DB_NAME}
+    - PGDATA=/data/postgres
+
+volumes:
+  postgres:
