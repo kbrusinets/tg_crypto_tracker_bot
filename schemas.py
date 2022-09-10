@@ -39,13 +39,13 @@ class ParsedWallet(BaseModel):
 class ParsedCoinTransfer(BaseModel):
     from_: ParsedWallet
     to_: ParsedWallet
-    amount: float
+    amount: str
 
 
 class ParsedTokenTransfer(BaseModel):
     from_: ParsedWallet
     to_: ParsedWallet
-    amount: float
+    amount: str
     token_symbol: str
     token_address: str
 

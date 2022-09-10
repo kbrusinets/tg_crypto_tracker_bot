@@ -89,7 +89,7 @@ class BSC(ChainInterface):
 
     async def get_first_transaction_ts(self, address: str) -> Optional[int]:
         normal_transactions = await self.get_normal_transactions(address=address, offset=1)
-        token_transactions = await self.get_normal_transactions(address=address, offset=1)
+        token_transactions = await self.get_token_transactions(address=address, offset=1)
         values_to_compare = []
         if normal_transactions['status'] == '1':
             values_to_compare.append(int(normal_transactions['result'][0]['timeStamp']))
