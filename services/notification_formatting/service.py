@@ -17,22 +17,26 @@ class NotificationFormattingService:
         self.chains_service = chains_service
         self.db_service = db_service
 
-    def create_transfer_string(self, chain_key: str, transfer: [ParsedCoinTransfer, ParsedTokenTransfer], currency: str,
+    async def create_transfer_string(self, chain_key: str, transfer: [ParsedCoinTransfer, ParsedTokenTransfer], currency: str,
                                currency_contract: str = None):
         to_ = transfer.to_.address
         from_ = transfer.from_.address
+        from_scan_name = await self.chains_service.get_wallet_scan_name(chain_key=chain_key, address=from_)
+        to_scan_name = await self.chains_service.get_wallet_scan_name(chain_key=chain_key, address=to_)
 
         return fmt.text(
             '▸',
             fmt.bold('From'),
             fmt.link(trim_address(from_),
                      self.chains_service.get_scan_wallet_link(chain_key=chain_key, address=from_)) +
-            ((fmt.escape_md(f' ({transfer.from_.custom_name})') if transfer.from_.custom_name else emojize(
-                ' :pushpin:')) if transfer.from_.monitored else ''),
+            (fmt.escape_md(f' ({transfer.from_.custom_name})') if transfer.from_.custom_name else
+             fmt.escape_md(f' ({from_scan_name})') if from_scan_name else '') +
+            (emojize(' :pushpin:') if transfer.from_.monitored else ''),
             fmt.bold('To'),
             fmt.link(trim_address(to_), self.chains_service.get_scan_wallet_link(chain_key=chain_key, address=to_)) +
-            ((fmt.escape_md(f' ({transfer.to_.custom_name})') if transfer.to_.custom_name else emojize(
-                ' :pushpin:')) if transfer.to_.monitored else ''),
+            (fmt.escape_md(f' ({transfer.to_.custom_name})') if transfer.to_.custom_name else
+             fmt.escape_md(f' ({to_scan_name})') if to_scan_name else '') +
+            (emojize(' :pushpin:') if transfer.to_.monitored else ''),
             fmt.bold('For'),
             fmt.escape_md(transfer.amount),
             fmt.link(currency, self.chains_service.get_scan_wallet_link(chain_key=chain_key,
@@ -72,7 +76,7 @@ class NotificationFormattingService:
         ))
         if notif.base_tran:
             message_parts.append(
-                self.create_transfer_string(
+                await self.create_transfer_string(
                     chain_key=notif.chain_key,
                     transfer=notif.base_tran,
                     currency=await self.db_service.get_native_coin(notif.chain_key)
@@ -80,7 +84,7 @@ class NotificationFormattingService:
             )
         for int_tran in notif.internal_transactions:
             message_parts.append(
-                self.create_transfer_string(
+                await self.create_transfer_string(
                     chain_key=notif.chain_key,
                     transfer=int_tran,
                     currency=await self.db_service.get_native_coin(notif.chain_key)
@@ -88,7 +92,7 @@ class NotificationFormattingService:
             )
         for token_trans in notif.token_transfers:
             message_parts.append(
-                self.create_transfer_string(
+                await self.create_transfer_string(
                     chain_key=notif.chain_key,
                     transfer=token_trans,
                     currency=token_trans.token_symbol,

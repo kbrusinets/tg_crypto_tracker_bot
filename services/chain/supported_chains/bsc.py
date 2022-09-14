@@ -11,6 +11,7 @@ from web3 import Web3
 from web3.contract import Contract
 from web3.middleware import geth_poa_middleware
 from bs4 import BeautifulSoup
+from async_lru import alru_cache
 
 from schemas import TransactionInfo, InternalTransactionInfo, TokenTransferInfo
 from services.chain.chain_interface import ChainInterface
@@ -35,11 +36,11 @@ class BSC(ChainInterface):
         return self._chain_coin
 
     def __init__(self):
-        self.node_wss = 'wss://ws-nd-028-903-801.p2pify.com/b658a41fb1a27f800d296d411a0abf16'
-        self.node_http = 'https://nd-028-903-801.p2pify.com/b658a41fb1a27f800d296d411a0abf16'
-        self.scan_api_http = 'https://api-testnet.bscscan.com/api'
+        self.node_wss = 'wss://ws-nd-257-981-040.p2pify.com/f7250c4eea3433f6786ff3c2ea32bba4'
+        self.node_http = 'https://nd-257-981-040.p2pify.com/f7250c4eea3433f6786ff3c2ea32bba4'
+        self.scan_api_http = 'https://api.bscscan.com/api'
         self.scan_api_token = '5FQIDDZEC7HVXA861EN3ETK16XTW46ZX5Q'
-        self.scan_url = 'https://testnet.bscscan.com'
+        self.scan_url = 'https://bscscan.com'
         self.w3 = Web3(Web3.WebsocketProvider(self.node_wss))
         self.w3.middleware_onion.inject(geth_poa_middleware, layer=0)
         self.wss_connection = None
@@ -59,6 +60,7 @@ class BSC(ChainInterface):
             else:
                 return None
 
+    @alru_cache()
     async def get_amount_of_normal_transactions(self, address: str) -> int:
         params = {
             'a': address
@@ -73,6 +75,7 @@ class BSC(ChainInterface):
             str_amount = re.search(reg_search, div_block.p.span.text).group(1)
             return int(str_amount.replace(',', ''))
 
+    @alru_cache()
     async def get_amount_of_token_transactions(self, address: str) -> int:
         params = {
             'a': address
@@ -86,6 +89,17 @@ class BSC(ChainInterface):
             reg_search = '.*A total of ([\d,]*).*'
             str_amount = re.search(reg_search, div_block.p.text).group(1)
             return int(str_amount.replace(',', ''))
+
+    @alru_cache()
+    async def get_wallet_scan_name(self, address: str) -> Optional[str]:
+        async with self.http_session.get(url='/'.join([self.scan_url.strip('/'), 'address', address])) as resp:
+            response = await resp.text()
+            parsed = BeautifulSoup(response, 'html5lib')
+            tag = parsed.find('span', {'title': 'Public Name Tag (viewable by anyone)'})
+            if tag:
+                return tag.text
+            else:
+                return None
 
     async def get_first_transaction_ts(self, address: str) -> Optional[int]:
         normal_transactions = await self.get_normal_transactions(address=address, offset=1)

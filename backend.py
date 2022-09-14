@@ -46,15 +46,17 @@ class Backend(metaclass=Singleton):
                         tx_receipt = await self.chains_service.get_transaction_receipt(chain_key=notif.chain_key, tx_hash=tran.hash)
                         if tx_receipt['result']['status'] != '0x1':
                             continue
+                        wallets_in_transaction_monitored = set()
+                        for _, wallets_monitored in users_trackings_map.items():
+                            wallets_in_transaction_monitored.update(set(wallets_monitored.keys()))
                         token_contracts = {}
-                        for user_id, wallets_monitored in users_trackings_map.items():
-                            for token_transfer in tran.token_transfers:
-                                if token_transfer.from_ in wallets_monitored.keys() or \
-                                        token_transfer.to_ in wallets_monitored.keys():
-                                    if token_transfer.contract_address not in token_contracts:
-                                        token_contracts[token_transfer.contract_address] = \
-                                            await self.chains_service.get_contract(chain_key=notif.chain_key,
-                                                                                   address=token_transfer.contract_address)
+                        for token_transfer in tran.token_transfers:
+                            if token_transfer.from_ in wallets_in_transaction_monitored or \
+                                    token_transfer.to_ in wallets_in_transaction_monitored:
+                                if token_transfer.contract_address not in token_contracts:
+                                    token_contracts[token_transfer.contract_address] = \
+                                        await self.chains_service.get_contract(chain_key=notif.chain_key,
+                                                                               address=token_transfer.contract_address)
                         for user in users_trackings_map.keys():
                             user_notification = self.notification_formatting_service.parse_notification(
                                 chain_key=notif.chain_key,

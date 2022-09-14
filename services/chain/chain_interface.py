@@ -37,6 +37,10 @@ class ChainInterface(ABC):
         pass
 
     @abstractmethod
+    async def get_wallet_scan_name(self, address: str) -> Optional[str]:
+        pass
+
+    @abstractmethod
     async def get_first_transaction_ts(self, address: str) -> Optional[int]:
         pass
 

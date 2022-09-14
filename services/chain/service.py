@@ -46,6 +46,9 @@ class ChainsService:
     async def get_amount_of_token_transactions(self, chain_key: str, address: str) -> int:
         return await self.chains[chain_key].get_amount_of_token_transactions(address=address)
 
+    async def get_wallet_scan_name(self, chain_key: str, address: str) -> int:
+        return await self.chains[chain_key].get_wallet_scan_name(address=address)
+
     async def get_first_transaction_ts(self, chain_key: str, address: str) -> Optional[int]:
         return await self.chains[chain_key].get_first_transaction_ts(address=address)
 
