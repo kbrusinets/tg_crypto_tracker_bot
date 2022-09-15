@@ -15,6 +15,7 @@ from async_lru import alru_cache
 
 from schemas import TransactionInfo, InternalTransactionInfo, TokenTransferInfo
 from services.chain.chain_interface import ChainInterface
+from utils.timed_lru_cache import timed_lru
 
 
 class BSC(ChainInterface):
@@ -60,7 +61,7 @@ class BSC(ChainInterface):
             else:
                 return None
 
-    @alru_cache()
+    @timed_lru(600)
     async def get_amount_of_normal_transactions(self, address: str) -> int:
         params = {
             'a': address
@@ -75,7 +76,7 @@ class BSC(ChainInterface):
             str_amount = re.search(reg_search, div_block.p.span.text).group(1)
             return int(str_amount.replace(',', ''))
 
-    @alru_cache()
+    @timed_lru(600)
     async def get_amount_of_token_transactions(self, address: str) -> int:
         params = {
             'a': address
