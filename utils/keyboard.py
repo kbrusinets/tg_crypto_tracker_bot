@@ -1,6 +1,6 @@
 from typing import List
 from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
-from main import backend
+from services.db.schemas import TrackingMapSchema
 
 
 def create_cancel_keyboard() -> ReplyKeyboardMarkup:
@@ -17,8 +17,7 @@ def create_keyboard_from_list(keys: List) -> ReplyKeyboardMarkup:
     return result
 
 
-async def create_keyboard_from_tracked_addresses(chain_key: str, user_id: int, page: int) -> ReplyKeyboardMarkup:
-    trackings = await backend.get_user_trackings(chain_key=chain_key, user_id=user_id)
+async def create_keyboard_with_trackings_pagination(trackings: List[TrackingMapSchema], page: int) -> ReplyKeyboardMarkup:
     for_buttons = [f"{tracking.wallet}{f' ({tracking.custom_name})' if tracking.custom_name else ''}" for
                    tracking in trackings[(page - 1) * 10:page * 10]]
     if page > 1:
@@ -28,8 +27,8 @@ async def create_keyboard_from_tracked_addresses(chain_key: str, user_id: int, p
     return create_keyboard_from_list(for_buttons)
 
 
-async def create_keyboard_for_deleting(chain_key: str, user_id: int, page: int) -> ReplyKeyboardMarkup:
-    paging_keyboard = await create_keyboard_from_tracked_addresses(chain_key=chain_key, user_id=user_id, page=page)
+async def create_keyboard_for_deleting(trackings: List[TrackingMapSchema], page: int) -> ReplyKeyboardMarkup:
+    paging_keyboard = await create_keyboard_with_trackings_pagination(trackings=trackings, page=page)
     result = ReplyKeyboardMarkup(resize_keyboard=True)
     result.add('Remove all wallets.')
     for button in paging_keyboard.keyboard:

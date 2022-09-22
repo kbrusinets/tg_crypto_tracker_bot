@@ -16,6 +16,7 @@ from async_lru import alru_cache
 from schemas import TransactionInfo, InternalTransactionInfo, TokenTransferInfo
 from services.chain.chain_interface import ChainInterface
 from utils.timed_lru_cache import timed_lru
+from utils.utils import remove_trailing_zeros_from_address
 
 
 class BSC(ChainInterface):
@@ -42,11 +43,12 @@ class BSC(ChainInterface):
         self.scan_api_http = 'https://api.bscscan.com/api'
         self.scan_api_token = '5FQIDDZEC7HVXA861EN3ETK16XTW46ZX5Q'
         self.scan_url = 'https://bscscan.com'
-        self.w3 = Web3(Web3.WebsocketProvider(self.node_wss))
+        self.w3 = Web3(Web3.HTTPProvider(self.node_http))
         self.w3.middleware_onion.inject(geth_poa_middleware, layer=0)
         self.wss_connection = None
         self.http_session = None
 
+    @alru_cache()
     async def get_contract(self, address: str) -> Optional[Contract]:
         params = {
             'module': 'contract',
@@ -139,6 +141,27 @@ class BSC(ChainInterface):
         }
         await self.wss_connection.send(json.dumps(body))
 
+    def process_token_transfer_logs(self, transfer_logs: List[Dict]) -> List[TokenTransferInfo]:
+        result = []
+        for log in transfer_logs:
+            values = [remove_trailing_zeros_from_address(topic) for topic in log['topics'][1:]]
+            data = log['data'].removeprefix('0x')
+            param_size_in_data = 64
+            params_in_data = [data[i:i + param_size_in_data] for i in range(0, len(data), param_size_in_data)]
+            values += [remove_trailing_zeros_from_address(param_in_data) for param_in_data in params_in_data]
+            if len(values) == 3:
+                result.append(TokenTransferInfo(
+                    transaction_hash=log['transactionHash'],
+                    contract_address=log['address'],
+                    from_=values[0],
+                    to_=values[1],
+                    value=values[2]
+                ))
+            else:
+                print(
+                    f'Error while parsing transfer event for contract in log {int(log["logIndex"], 16)} in transaction {log["transactionHash"]}. Parsed parameters length = {len(values)}')
+        return result
+
     async def subscribe_to_new_transactions(self) -> AsyncGenerator[Dict[str, TransactionInfo], None]:
         await self.subscribe_to_new_blocks()
         async for notification in self.websocket_consumer_handler():
@@ -149,7 +172,6 @@ class BSC(ChainInterface):
                 transfer_topic = '0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef'
                 block_transfer_logs = await self.get_logs(block_number=new_block_number, topics=[transfer_topic])
                 internal_transactions = await self.get_internal_transactions(block_number=new_block_number)
-
                 transactions = {}
                 for transaction in new_block_info['result']['transactions']:
                     transactions[transaction['hash']] = TransactionInfo(
@@ -167,17 +189,8 @@ class BSC(ChainInterface):
                                 value=int_tran['value']
                             )
                         )
-                for transfer_log in block_transfer_logs['result']:
-                    if transfer_log['data'] == '0x':
-                        continue   # Skip ERC-721 Token
-                    transactions[transfer_log['transactionHash']].token_transfers.append(
-                        TokenTransferInfo(
-                            contract_address=transfer_log['address'],
-                            from_=transfer_log['topics'][1],
-                            to_=transfer_log['topics'][2],
-                            value=hex(int(transfer_log['data'], 16))
-                        )
-                    )
+                for transfer in self.process_token_transfer_logs(transfer_logs=block_transfer_logs['result']):
+                    transactions[transfer.transaction_hash].token_transfers.append(transfer)
                 yield transactions
 
     async def get_block_by_number(self, block_number: str) -> Dict:
@@ -221,9 +234,6 @@ class BSC(ChainInterface):
         }
         async with self.http_session.post(url=self.node_http, data=json.dumps(data)) as resp:
             answer = await resp.json()
-            for log in answer['result']:
-                log['topics'][1] = hex(int(log['topics'][1], 16))
-                log['topics'][2] = hex(int(log['topics'][2], 16))
             return answer
 
     async def get_transaction_receipt(self, tx_hash: str) -> Dict:

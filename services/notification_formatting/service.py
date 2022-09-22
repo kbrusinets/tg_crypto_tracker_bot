@@ -113,12 +113,11 @@ class NotificationFormattingService:
         else:
             return fmt.text(*message_parts, sep='\n\n')
 
-    def parse_notification(self,
+    async def parse_notification(self,
                            chain_key: str,
                            user_id: int,
                            transaction: TransactionInfo,
-                           wallets_monitored: Dict[str, str],
-                           token_contracts: Dict[str, Contract]) -> ParsedNotification:
+                           wallets_monitored: Dict[str, str]) -> ParsedNotification:
         value_mult = 10 ** (-18)
         base_tran = None
         internal_transactions = []
@@ -156,7 +155,8 @@ class NotificationFormattingService:
                 )
         for token_transfer in transaction.token_transfers:
             if token_transfer.from_ in wallets_monitored or token_transfer.to_ in wallets_monitored:
-                contract = token_contracts[token_transfer.contract_address]
+                contract = await self.chains_service.get_contract(chain_key=chain_key,
+                                                                  address=token_transfer.contract_address)
                 if contract is None or 'symbol' not in contract.functions:
                     token_symbol = 'Unknown token'
                 else:

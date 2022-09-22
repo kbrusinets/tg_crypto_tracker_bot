@@ -72,9 +72,7 @@ class DbService:
         if custom_name:
             params['custom_name'] = custom_name
         async with self.crud.get(TrackingMap, **params) as result:
-            found_trackings =  result.all()
-            if not found_trackings:
-                return None
+            found_trackings = result.all()
             return [TrackingMapSchema.from_orm(found_tracking[0]) for found_tracking in found_trackings]
 
     async def give_wallet_a_name(self, chain_key: str, user_id: int, wallet_address: str, wallet_name: str):

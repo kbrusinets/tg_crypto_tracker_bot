@@ -4,6 +4,7 @@ from pydantic.main import BaseModel
 
 
 class TokenTransferInfo(BaseModel):
+    transaction_hash: str
     contract_address: str
     from_: str
     to_: str
