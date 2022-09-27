@@ -1,6 +1,5 @@
 from typing import Dict
-
-from web3.contract import Contract
+from datetime import datetime, timezone
 
 from schemas import ParsedCoinTransfer, ParsedTokenTransfer, WalletAddToTrack, ParsedNotification, TransactionInfo, \
     ParsedWallet
@@ -68,10 +67,17 @@ class NotificationFormattingService:
 
     async def format_notification(self, notif: ParsedNotification):
         message_parts = []
+        date_format = '%Y-%m-%d %H:%M:%S %Z'
+        default_tz = timezone.utc
         message_parts.append(fmt.text(
             emojize(':memo:'),
             fmt.link('Transaction',
                      self.chains_service.get_scan_tx_link(chain_key=notif.chain_key, tx_hash=notif.tx_hash)),
+            'at',
+            fmt.bold(
+                datetime.fromtimestamp(notif.timestamp).replace(tzinfo=default_tz).strftime(date_format)
+            ),
+            'on',
             fmt.bold(self.chains_service.get_chain_info(chain_key=notif.chain_key).name)
         ))
         if notif.base_tran:
@@ -179,6 +185,7 @@ class NotificationFormattingService:
                     )
                 )
         return ParsedNotification(chain_key=chain_key,
+                                  timestamp=transaction.timestamp,
                                   user_id=user_id,
                                   tx_hash=transaction.hash,
                                   base_tran=base_tran,

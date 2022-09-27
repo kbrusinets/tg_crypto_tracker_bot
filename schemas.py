@@ -22,6 +22,7 @@ class TransactionInfo(BaseModel):
     from_: str
     to_: Optional[str]
     value: str
+    timestamp: int
     token_transfers: List[TokenTransferInfo] = []
     internal_transactions: List[InternalTransactionInfo] = []
 
@@ -58,6 +59,7 @@ class WalletAddToTrack(BaseModel):
 
 class ParsedNotification(BaseModel):
     chain_key: str
+    timestamp: int
     user_id: int
     tx_hash: str
     base_tran: Optional[ParsedCoinTransfer]
