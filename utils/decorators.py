@@ -1,4 +1,5 @@
 import asyncio
+from asyncio import TimeoutError
 
 from aiohttp import ClientConnectionError
 from datetime import datetime
@@ -9,7 +10,7 @@ def http_exception_handler(fun):
         while True:
             try:
                 return await fun(*args, **kwargs)
-            except ClientConnectionError:
+            except (ClientConnectionError, TimeoutError):
                 print(f'{datetime.now()} Connection error while requesting {fun.__name__ }. Trying again.')
                 await asyncio.sleep(2)
 

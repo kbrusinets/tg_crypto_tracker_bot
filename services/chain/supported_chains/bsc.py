@@ -137,7 +137,8 @@ class BSC(ChainInterface):
                 if self.http_session is not None:
                     await self.http_session.close()
                 self.wss_connection = await connect(self.node_wss)
-                self.http_session = await aiohttp.ClientSession(headers={'Content-Type': 'application/json'}).__aenter__()
+                self.http_session = await aiohttp.ClientSession(headers={'Content-Type': 'application/json'},
+                                                                timeout=aiohttp.ClientTimeout(total=20)).__aenter__()
                 await self.subscribe_to_new_blocks()
                 break
             except (gaierror, OSError):
