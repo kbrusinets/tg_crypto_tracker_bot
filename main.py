@@ -1,4 +1,5 @@
 import asyncio
+import datetime
 import sys
 
 from aiogram.contrib.fsm_storage.memory import MemoryStorage
@@ -6,6 +7,8 @@ from aiogram.dispatcher import FSMContext
 from aiogram.dispatcher.filters import Text
 from aiogram import Bot, Dispatcher, executor, types
 from aiogram.types.bot_command import BotCommand
+from aiogram.utils.exceptions import RetryAfter
+
 from backend import Backend
 from message_handlers.states import AddWalletStates, RenameWalletStates, DeleteWalletStates
 from os import environ
@@ -78,12 +81,18 @@ async def monitor():
     async for notif in backend.monitor():
         text_message = await backend.format_notification(notif)
         if text_message:
-            await bot.send_message(
-                chat_id=notif.user_id,
-                text=text_message,
-                parse_mode="MarkdownV2",
-                disable_web_page_preview=True
-            )
+            while True:
+                try:
+                    await bot.send_message(
+                        chat_id=notif.user_id,
+                        text=text_message,
+                        parse_mode="MarkdownV2",
+                        disable_web_page_preview=True
+                    )
+                    break
+                except RetryAfter:
+                    print(f'{datetime.datetime.now()} Error while sending message. Text:\n{text_message}')
+                    await asyncio.sleep(2)
 
 
 if __name__ == '__main__':
