@@ -1,4 +1,5 @@
 import itertools
+import traceback
 from typing import Dict, Set, Optional
 from datetime import datetime as dt
 
@@ -58,8 +59,9 @@ class Backend(metaclass=Singleton):
                                 wallets_monitored=users_trackings_map[user]
                             )
                             yield user_notification
-            except Exception as e:
-                print(e)
+            except Exception as error:
+                print(f'{dt.now()} Unexpected error while processing notification.')
+                print(f'{dt.now()} {traceback.format_exc()}')
 
     async def autoadd_tracking(self,
                                notif: ParsedNotification,
@@ -105,7 +107,12 @@ class Backend(metaclass=Singleton):
         return self.chains_service.get_chains_keys()
 
     async def format_notification(self, notif: ParsedNotification):
-        return await self.notification_formatting_service.format_notification(notif=notif)
+        try:
+            return await self.notification_formatting_service.format_notification(notif=notif)
+        except Exception as error:
+            print(f'{dt.now()} Unexpected error while parsing notification.')
+            print(f'{dt.now()} {notif}')
+            return None
 
     async def get_all_transactions_amount(self, chain_key: str, address: str):
         normal_transactions = await self.chains_service.get_amount_of_normal_transactions(chain_key=chain_key, address=address)

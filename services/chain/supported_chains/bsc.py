@@ -2,11 +2,12 @@ import asyncio
 import datetime
 import json
 import re
+import traceback
 import uuid
 from typing import Optional, Dict, AsyncGenerator, List
 from socket import gaierror
 import aiohttp
-from aiohttp import ContentTypeError
+from aiohttp import ContentTypeError, ClientResponseError
 from websockets import connect
 from web3 import Web3
 from web3.contract import Contract
@@ -62,6 +63,10 @@ class BSC(ChainInterface):
             'apikey': self.scan_api_token
         }
         async with self.http_session.get(url=self.scan_api_http, params=params) as resp:
+            if resp.status != 200:
+                raise ClientResponseError(request_info=resp.request_info,
+                                          status=resp.status, message=await resp.text(),
+                                          history=resp.history)
             abi = json.loads(await resp.text())
             if abi['status'] == '1':
                 return self.w3.eth.contract(address=self.w3.toChecksumAddress(address), abi=abi['result'])
@@ -75,6 +80,10 @@ class BSC(ChainInterface):
             'a': address
         }
         async with self.http_session.get(url='/'.join([self.scan_url.strip('/'), 'txs']), params=params) as resp:
+            if resp.status != 200:
+                raise ClientResponseError(request_info=resp.request_info,
+                                          status=resp.status, message=await resp.text(),
+                                          history=resp.history)
             response = await resp.text()
             parsed = BeautifulSoup(response, 'html5lib')
             div_block = parsed.find("div", id="ContentPlaceHolder1_topPageDiv")
@@ -91,6 +100,10 @@ class BSC(ChainInterface):
             'a': address
         }
         async with self.http_session.get(url='/'.join([self.scan_url.strip('/'), 'tokentxns']), params=params) as resp:
+            if resp.status != 200:
+                raise ClientResponseError(request_info=resp.request_info,
+                                          status=resp.status, message=await resp.text(),
+                                          history=resp.history)
             response = await resp.text()
             parsed = BeautifulSoup(response, 'html5lib')
             div_block = parsed.find("div", id="ContentPlaceHolder1_divTopPagination")
@@ -104,6 +117,10 @@ class BSC(ChainInterface):
     @alru_cache()
     async def get_wallet_scan_name(self, address: str) -> Optional[str]:
         async with self.http_session.get(url='/'.join([self.scan_url.strip('/'), 'address', address])) as resp:
+            if resp.status != 200:
+                raise ClientResponseError(request_info=resp.request_info,
+                                          status=resp.status, message=await resp.text(),
+                                          history=resp.history)
             response = await resp.text()
             parsed = BeautifulSoup(response, 'html5lib')
             tag = parsed.find('span', {'title': 'Public Name Tag (viewable by anyone)'})
@@ -144,6 +161,10 @@ class BSC(ChainInterface):
             except (gaierror, OSError):
                 print(f'{datetime.datetime.now()} There is a problem with your internet connection. Trying to reconnect.')
                 await asyncio.sleep(2)
+            except Exception as error:
+                print(f'{datetime.datetime.now()} Unexpected error with the connections. Trying to reconnect.')
+                print(f'{datetime.datetime.now()} {traceback.format_exc()}')
+                await asyncio.sleep(2)
 
     async def websocket_consumer_handler(self) -> AsyncGenerator[Dict, None]:
         while True:
@@ -153,6 +174,10 @@ class BSC(ChainInterface):
                     yield json.loads(message)
             except ConnectionClosedError:
                 print(f'{datetime.datetime.now()} Lost websocket connection with the node. Reconnecting.')
+                await self.start()
+            except Exception as error:
+                print(f'{datetime.datetime.now()} Unexpected error with the websocket. Reconnecting.')
+                print(f'{datetime.datetime.now()} {traceback.format_exc()}')
                 await self.start()
 
     async def subscribe_to_new_blocks(self) -> None:
@@ -185,41 +210,61 @@ class BSC(ChainInterface):
                     f'Error while parsing transfer event for contract in log {int(log["logIndex"], 16)} in transaction {log["transactionHash"]}. Parsed parameters length = {len(values)}')
         return result
 
+    async def process_notification(self, notification):
+        if 'method' in notification:
+            new_block_number = int(notification["params"]["result"]["number"], 16)
+            if self.last_processed_block is None:
+                self.last_processed_block = new_block_number - 1
+            while self.last_processed_block < new_block_number:
+                current_block = self.last_processed_block + 1
+                print(f"{datetime.datetime.now()} Current block: {hex(current_block)}")
+                new_block_info = await self.get_block_by_number(block_number=hex(current_block))
+                transfer_topic = '0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef'
+                block_transfer_logs = await self.get_logs(block_number=hex(current_block), topics=[transfer_topic])
+                internal_transactions = await self.get_internal_transactions(block_number=hex(current_block))
+                transactions = {}
+                for transaction in new_block_info['result']['transactions']:
+                    transactions[transaction['hash']] = TransactionInfo(
+                        hash=transaction['hash'],
+                        from_=transaction['from'],
+                        to_=transaction['to'],
+                        value=transaction['value'],
+                        timestamp=int(new_block_info['result']['timestamp'], 16)
+                    )
+                if internal_transactions['status'] == '1':
+                    for int_tran in internal_transactions['result']:
+                        transactions[int_tran['hash']].internal_transactions.append(
+                            InternalTransactionInfo(
+                                from_=int_tran['from'],
+                                to_=int_tran['to'],
+                                value=int_tran['value']
+                            )
+                        )
+                for transfer in self.process_token_transfer_logs(transfer_logs=block_transfer_logs['result']):
+                    transactions[transfer.transaction_hash].token_transfers.append(transfer)
+                self.last_processed_block = current_block
+                return transactions
+
     async def subscribe_to_new_transactions(self) -> AsyncGenerator[Dict[str, TransactionInfo], None]:
         async for notification in self.websocket_consumer_handler():
-            if 'method' in notification:
-                new_block_number = int(notification["params"]["result"]["number"], 16)
-                if self.last_processed_block is None:
-                    self.last_processed_block = new_block_number - 1
-                while self.last_processed_block < new_block_number:
-                    current_block = self.last_processed_block + 1
-                    print(f"{datetime.datetime.now()} Current block: {hex(current_block)}")
-                    new_block_info = await self.get_block_by_number(block_number=hex(current_block))
-                    transfer_topic = '0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef'
-                    block_transfer_logs = await self.get_logs(block_number=hex(current_block), topics=[transfer_topic])
-                    internal_transactions = await self.get_internal_transactions(block_number=hex(current_block))
-                    transactions = {}
-                    for transaction in new_block_info['result']['transactions']:
-                        transactions[transaction['hash']] = TransactionInfo(
-                            hash=transaction['hash'],
-                            from_=transaction['from'],
-                            to_=transaction['to'],
-                            value=transaction['value'],
-                            timestamp=int(new_block_info['result']['timestamp'], 16)
-                        )
-                    if internal_transactions['status'] == '1':
-                        for int_tran in internal_transactions['result']:
-                            transactions[int_tran['hash']].internal_transactions.append(
-                                InternalTransactionInfo(
-                                    from_=int_tran['from'],
-                                    to_=int_tran['to'],
-                                    value=int_tran['value']
-                                )
-                            )
-                    for transfer in self.process_token_transfer_logs(transfer_logs=block_transfer_logs['result']):
-                        transactions[transfer.transaction_hash].token_transfers.append(transfer)
-                    self.last_processed_block = current_block
-                    yield transactions
+            retry = True
+            while True:
+                try:
+                    result = await self.process_notification(notification)
+                    if result:
+                        yield result
+                    break
+                except Exception as error:
+                    print(f'{datetime.datetime.now()} Unexpected error while parsing block.')
+                    print(f'{datetime.datetime.now()} {traceback.format_exc()}')
+                    if retry:
+                        print(f'{datetime.datetime.now()} Trying again.')
+                        retry = False
+                    else:
+                        print(f'{datetime.datetime.now()} Skipping block.')
+                        self.last_processed_block += 1
+                        break
+
 
     @http_exception_handler
     async def get_block_by_number(self, block_number: str) -> Dict:
@@ -232,6 +277,10 @@ class BSC(ChainInterface):
         #TODO: Поэтому поставил здесь на этот случай повтор запроса
         while True:
             async with self.http_session.post(url=self.node_http, data=json.dumps(data)) as resp:
+                if resp.status != 200:
+                    raise ClientResponseError(request_info=resp.request_info,
+                                              status=resp.status, message=await resp.text(),
+                                              history=resp.history)
                 try:
                     result = await resp.json()
                 except ContentTypeError:
@@ -261,6 +310,10 @@ class BSC(ChainInterface):
             ]
         }
         async with self.http_session.post(url=self.node_http, data=json.dumps(data)) as resp:
+            if resp.status != 200:
+                raise ClientResponseError(request_info=resp.request_info,
+                                          status=resp.status, message=await resp.text(),
+                                          history=resp.history)
             answer = await resp.json()
             return answer
 
@@ -273,6 +326,10 @@ class BSC(ChainInterface):
             "params": [tx_hash]
         }
         async with self.http_session.post(url=self.node_http, data=json.dumps(data)) as resp:
+            if resp.status != 200:
+                raise ClientResponseError(request_info=resp.request_info,
+                                          status=resp.status, message=await resp.text(),
+                                          history=resp.history)
             return await resp.json()
 
     @http_exception_handler
@@ -289,6 +346,10 @@ class BSC(ChainInterface):
             'apikey': self.scan_api_token
         }
         async with self.http_session.get(url=self.scan_api_http, params=params) as resp:
+            if resp.status != 200:
+                raise ClientResponseError(request_info=resp.request_info,
+                                          status=resp.status, message=await resp.text(),
+                                          history=resp.history)
             return await resp.json()
 
     @http_exception_handler
@@ -311,6 +372,10 @@ class BSC(ChainInterface):
             'apikey': self.scan_api_token
         }
         async with self.http_session.get(url=self.scan_api_http, params=params) as resp:
+            if resp.status != 200:
+                raise ClientResponseError(request_info=resp.request_info,
+                                          status=resp.status, message=await resp.text(),
+                                          history=resp.history)
             return await resp.json()
 
     @http_exception_handler
@@ -332,4 +397,8 @@ class BSC(ChainInterface):
         if contract_address:
             params['contractaddress'] = contract_address
         async with self.http_session.get(url=self.scan_api_http, params=params) as resp:
+            if resp.status != 200:
+                raise ClientResponseError(request_info=resp.request_info,
+                                          status=resp.status, message=await resp.text(),
+                                          history=resp.history)
             return await resp.json()

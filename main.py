@@ -1,6 +1,7 @@
 import asyncio
 import datetime
 import sys
+import traceback
 
 from aiogram.contrib.fsm_storage.memory import MemoryStorage
 from aiogram.dispatcher import FSMContext
@@ -81,6 +82,7 @@ async def monitor():
     async for notif in backend.monitor():
         text_message = await backend.format_notification(notif)
         if text_message:
+            retry = True
             while True:
                 try:
                     await bot.send_message(
@@ -90,9 +92,26 @@ async def monitor():
                         disable_web_page_preview=True
                     )
                     break
-                except RetryAfter:
+                except RetryAfter as e:
                     print(f'{datetime.datetime.now()} Error while sending message. Text:\n{text_message}')
-                    await asyncio.sleep(2)
+                    print(f'{datetime.datetime.now()} {e}')
+                    if retry:
+                        print(f'{datetime.datetime.now()} Trying again.')
+                        await asyncio.sleep(2)
+                        retry = False
+                    else:
+                        print(f'{datetime.datetime.now()} Skipping message.')
+                        break
+                except Exception as error:
+                    print(f'{datetime.datetime.now()} Unknown error while sending message. Text:\n{text_message}')
+                    print(f'{datetime.datetime.now()} {traceback.format_exc()}')
+                    if retry:
+                        print(f'{datetime.datetime.now()} Trying again.')
+                        await asyncio.sleep(2)
+                        retry = False
+                    else:
+                        print(f'{datetime.datetime.now()} Skipping message.')
+                        break
 
 
 if __name__ == '__main__':
