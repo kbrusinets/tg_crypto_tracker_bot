@@ -75,7 +75,7 @@ class BSC(ChainInterface):
 
     @http_exception_handler
     @timed_lru(600)
-    async def get_amount_of_normal_transactions(self, address: str) -> int:
+    async def get_amount_of_normal_transactions(self, address: str) -> Optional[int]:
         params = {
             'a': address
         }
@@ -95,7 +95,7 @@ class BSC(ChainInterface):
 
     @http_exception_handler
     @timed_lru(600)
-    async def get_amount_of_token_transactions(self, address: str) -> int:
+    async def get_amount_of_token_transactions(self, address: str) -> Optional[int]:
         params = {
             'a': address
         }
@@ -133,9 +133,9 @@ class BSC(ChainInterface):
         normal_transactions = await self.get_normal_transactions(address=address, offset=1)
         token_transactions = await self.get_token_transactions(address=address, offset=1)
         values_to_compare = []
-        if normal_transactions['status'] == '1':
+        if normal_transactions and normal_transactions['status'] == '1':
             values_to_compare.append(int(normal_transactions['result'][0]['timeStamp']))
-        if token_transactions['status'] == '1':
+        if token_transactions and token_transactions['status'] == '1':
             values_to_compare.append(int(token_transactions['result'][0]['timeStamp']))
         if values_to_compare:
             return min(values_to_compare)
@@ -222,6 +222,8 @@ class BSC(ChainInterface):
                 transfer_topic = '0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef'
                 block_transfer_logs = await self.get_logs(block_number=hex(current_block), topics=[transfer_topic])
                 internal_transactions = await self.get_internal_transactions(block_number=hex(current_block))
+                if not (new_block_info and block_transfer_logs and internal_transactions):
+                    return None
                 transactions = {}
                 for transaction in new_block_info['result']['transactions']:
                     transactions[transaction['hash']] = TransactionInfo(
@@ -246,6 +248,7 @@ class BSC(ChainInterface):
                 return transactions
 
     async def subscribe_to_new_transactions(self) -> AsyncGenerator[Dict[str, TransactionInfo], None]:
+        self.last_processed_block = 21804960
         async for notification in self.websocket_consumer_handler():
             retry = True
             while True:
@@ -267,7 +270,7 @@ class BSC(ChainInterface):
 
 
     @http_exception_handler
-    async def get_block_by_number(self, block_number: str) -> Dict:
+    async def get_block_by_number(self, block_number: str) -> Optional[Dict]:
         data = {
             "id": str(uuid.uuid4()),
             "method": "eth_getBlockByNumber",
@@ -296,7 +299,7 @@ class BSC(ChainInterface):
         return result
 
     @http_exception_handler
-    async def get_logs(self, block_number: str, topics: List[str]) -> Dict:
+    async def get_logs(self, block_number: str, topics: List[str]) -> Optional[Dict]:
         data = {
             "id": str(uuid.uuid4()),
             "method": "eth_getLogs",
@@ -318,7 +321,7 @@ class BSC(ChainInterface):
             return answer
 
     @http_exception_handler
-    async def get_transaction_receipt(self, tx_hash: str) -> Dict:
+    async def get_transaction_receipt(self, tx_hash: str) -> Optional[Dict]:
         data = {
             "id": str(uuid.uuid4()),
             "method": "eth_getTransactionReceipt",
@@ -333,7 +336,7 @@ class BSC(ChainInterface):
             return await resp.json()
 
     @http_exception_handler
-    async def get_internal_transactions(self, block_number: str) -> Dict:
+    async def get_internal_transactions(self, block_number: str) -> Optional[Dict]:
         block_number = int(block_number, 16)
         params = {
             'module': 'account',
@@ -359,7 +362,7 @@ class BSC(ChainInterface):
                                       end_block: int = 99999999,
                                       page: int = 1,
                                       offset: int = 100,
-                                      sort_order: str = 'asc') -> Dict:
+                                      sort_order: str = 'asc') -> Optional[Dict]:
         params = {
             'module': 'account',
             'action': 'txlist',
@@ -384,7 +387,7 @@ class BSC(ChainInterface):
                                      contract_address: str = None,
                                      page: int = 1,
                                      offset: int = 100,
-                                     sort_order: str = 'asc') -> Dict:
+                                     sort_order: str = 'asc') -> Optional[Dict]:
         params = {
             'module': 'account',
             'action': 'txlist',

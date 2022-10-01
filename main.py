@@ -95,23 +95,16 @@ async def monitor():
                 except RetryAfter as e:
                     print(f'{datetime.datetime.now()} Error while sending message. Text:\n{text_message}')
                     print(f'{datetime.datetime.now()} {e}')
-                    if retry:
-                        print(f'{datetime.datetime.now()} Trying again.')
-                        await asyncio.sleep(2)
-                        retry = False
-                    else:
-                        print(f'{datetime.datetime.now()} Skipping message.')
-                        break
                 except Exception as error:
                     print(f'{datetime.datetime.now()} Unknown error while sending message. Text:\n{text_message}')
                     print(f'{datetime.datetime.now()} {traceback.format_exc()}')
-                    if retry:
-                        print(f'{datetime.datetime.now()} Trying again.')
-                        await asyncio.sleep(2)
-                        retry = False
-                    else:
-                        print(f'{datetime.datetime.now()} Skipping message.')
-                        break
+                if retry:
+                    print(f'{datetime.datetime.now()} Trying again.')
+                    await asyncio.sleep(2)
+                    retry = False
+                else:
+                    print(f'{datetime.datetime.now()} Skipping message.')
+                    break
 
 
 if __name__ == '__main__':

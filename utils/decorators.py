@@ -8,6 +8,7 @@ from datetime import datetime
 
 def http_exception_handler(fun):
     async def try_to_run(*args, **kwargs):
+        retries = 5
         while True:
             try:
                 return await fun(*args, **kwargs)
@@ -22,5 +23,12 @@ def http_exception_handler(fun):
                 print(f'{datetime.now()} Unexpected error while requesting {fun.__name__ }. Trying again.')
                 print(f'{datetime.now()} {traceback.format_exc()}')
                 await asyncio.sleep(2)
+            if retries > 0:
+                print(f'{datetime.now()} Trying again.')
+                await asyncio.sleep(2)
+                retries -= 1
+            else:
+                print(f'{datetime.now()} Skipping.')
+                return None
 
     return try_to_run

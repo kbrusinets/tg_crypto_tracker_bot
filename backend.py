@@ -117,7 +117,10 @@ class Backend(metaclass=Singleton):
     async def get_all_transactions_amount(self, chain_key: str, address: str):
         normal_transactions = await self.chains_service.get_amount_of_normal_transactions(chain_key=chain_key, address=address)
         token_transactions = await self.chains_service.get_amount_of_token_transactions(chain_key=chain_key, address=address)
-        return normal_transactions + token_transactions
+        if normal_transactions and token_transactions:
+            return normal_transactions + token_transactions
+        else:
+            return 0
 
     async def get_days_since_first_trans(self, chain_key: str, address: str) -> int:
         first_transaction_ts = await self.chains_service.get_first_transaction_ts(chain_key=chain_key, address=address)
