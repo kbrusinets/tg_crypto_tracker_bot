@@ -248,7 +248,6 @@ class BSC(ChainInterface):
                 return transactions
 
     async def subscribe_to_new_transactions(self) -> AsyncGenerator[Dict[str, TransactionInfo], None]:
-        self.last_processed_block = 21804960
         async for notification in self.websocket_consumer_handler():
             retry = True
             while True:
