@@ -91,7 +91,11 @@ class BSC(ChainInterface):
                 return 0
             reg_search = '.*A total of ([\d,]*).*'
             str_amount = re.search(reg_search, div_block.p.span.text).group(1)
-            return int(str_amount.replace(',', ''))
+            str_amount = str_amount.replace(',', '')
+            if not str_amount:
+                return 0
+            else:
+                return int(str_amount)
 
     @http_exception_handler
     @timed_lru(600)
@@ -111,7 +115,11 @@ class BSC(ChainInterface):
                 return 0
             reg_search = '.*A total of ([\d,]*).*'
             str_amount = re.search(reg_search, div_block.p.text).group(1)
-            return int(str_amount.replace(',', ''))
+            str_amount = str_amount.replace(',', '')
+            if not str_amount:
+                return 0
+            else:
+                return int(str_amount)
 
     @http_exception_handler
     @alru_cache()
